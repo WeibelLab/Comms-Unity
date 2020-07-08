@@ -48,8 +48,6 @@ namespace Comms
     /// 
     public class ReliableCommunication : MonoBehaviour
     {
-        static readonly string VERSION = "1.33";
-
         /// <summary>
         /// We raise this exception when the socket disconnects mid-read
         /// </summary>
@@ -121,7 +119,6 @@ namespace Comms
 
         // Shared
         private Thread listenerThread;
-        private bool NeedToReconnect = false;
 
         // name used for the purpose of logging
         private string LogName;
