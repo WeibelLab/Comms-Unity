@@ -1,0 +1,9 @@
+{
+    "name": "com.weibellab.comms",
+    "version": "0.0.1",
+    "displayName": "Comms",
+    "description": "Scripts for communicating between computers using TCP and UDP and message passing with JSON, strings, and binary information",
+    "unity": "2017.1",
+    "dependencies": {
+    }
+}

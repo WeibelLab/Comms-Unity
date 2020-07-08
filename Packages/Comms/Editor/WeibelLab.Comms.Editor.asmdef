@@ -1,0 +1,16 @@
+{
+    "name": "WeibelLab.Comms.Editor",
+    "references": [
+        "GUID:018db1ddca6d448af805e8176724f09a"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": []
+}
