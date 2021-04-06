@@ -1,9 +1,12 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading;
+using System.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.Events;
 
@@ -105,6 +108,14 @@ namespace Comms
 
         [Tooltip("Check this box if the socket should connect when the script / game object is enabled / first starts")]
         public bool ConnectOnEnable = true;
+
+        // External Connection Information
+        public TargettingStrategy strategy = TargettingStrategy.Web;
+        public string id = "qwerty";
+        public string key = "inkoay";
+        public string room = "blue-dog";
+        public string webserverSyncAddress = "http://localhost:3000/join";
+        private Thread ipSettingThread;
 
         #endregion
 
@@ -244,8 +255,9 @@ namespace Comms
 
         private void OnEnable()
         {
-            if (ConnectOnEnable)
-                StartConnection();
+            if (ConnectOnEnable) {
+                this.setTargetAndStartConnection();
+            }
         }
 
         private void OnDisable()
@@ -305,6 +317,123 @@ namespace Comms
             {
                 Debug.LogError(LogName + " Failed to start socket thread: " + e);
             }
+        }
+
+        /// <summary>
+        /// Sets the target IP and Port based on set strategy
+        /// By default, the user manually sets the port and IP.
+        /// Optionally, they can ping a web server to get other device info.
+        /// </summary>
+        private async void setTargetAndStartConnection()
+        {
+            // yield return null;
+            if (Application.isPlaying) {
+                Task<bool> task;
+                switch (this.strategy)
+                {
+                    case TargettingStrategy.Manual:
+                        this.StartConnection();
+                        break;
+                    case TargettingStrategy.Web:
+                        task = this.getAddressFromWeb();
+                        await task;
+                        while (task.Result == false && Application.isPlaying) {
+                            Debug.Log(LogName + "Failed to Connect");
+                            Task.Delay(1000).Wait();
+                            task = this.getAddressFromWeb();
+                            await task;
+                        }
+                        this.StartConnection();
+                        break;
+                    case TargettingStrategy.UDP:
+                        task = this.getAddressFromUdp();
+                        await task;
+                        while (task.Result == false && Application.isPlaying) {
+                            Debug.Log(LogName + "Failed to Connect");
+                            Task.Delay(100).Wait();
+                            task = this.getAddressFromUdp();
+                            await task;
+                        }
+                        this.StartConnection();
+                        break;
+                    default:
+                        throw new Exception(LogName + "Unknown Connection Strategy");
+                }
+            }
+        }
+
+        /// <summary>
+        /// Sets the target Port and IP from a web request.
+        /// POSTs data about this Reliable Communication
+        /// gets a response with server/client address(es)
+        /// </summary>
+        private async Task<bool> getAddressFromWeb()
+        {
+            Debug.Log(LogName + "Syncing with web server");
+            System.Net.Http.HttpClient client = new System.Net.Http.HttpClient();
+            var postData = new Dictionary<string, string>{
+                { "id", this.id },
+                { "type", this.isServer? "server":"client" },
+                { "key", this.key },
+                { "room", this.room },
+                { "port", this.isServer? this.ListenPort.ToString(): "" }
+            };
+
+            // Make POST request
+            var content = new System.Net.Http.FormUrlEncodedContent(postData);
+            System.Net.Http.HttpResponseMessage response = await client.PostAsync(this.webserverSyncAddress, content);
+            string responseString = await response.Content.ReadAsStringAsync();
+
+            // Set IP address
+            if (response.IsSuccessStatusCode) {
+                JSONObject responseJson = new JSONObject(responseString);
+                if (this.isServer) {
+                    // Do Nothing - let the clients connect to you
+                }
+                else {
+                    // Parse IP Address
+                    String ip = responseJson["ip"].str;
+                    Regex rg = new Regex(@"[0-9]*\.[0-9]*\.[0-9]*\.[0-9]*");
+                    MatchCollection matches = rg.Matches(ip);
+                    if (matches.Count > 0) {ip = matches[0].Value;}
+                    this.Host.Address = ip;
+                    Debug.Log(LogName + "Set IP Address to " + ip);
+
+                    // Parse Port
+                    this.Host.Port = (int) responseJson["port"].i;
+                }
+                return true;
+            }
+            // Handle errors
+            else {
+                switch (response.StatusCode) {
+                    case HttpStatusCode.BadRequest: // 400
+                        Debug.LogError(LogName + "Made a bad request\n" + response.ToString());
+                        // throw new Exception(LogName + "Made a bad request\n" + response.ToString())
+                        break;
+                    case HttpStatusCode.Forbidden: // 403
+                        Debug.LogError(LogName + "Invalid Passkey: " + this.key + "\n" + response.ToString());
+                        // throw new Exception(LogName + "Invalid Passkey: " + this.key + "\n" + response.ToString());
+                        break;
+                    case HttpStatusCode.NotFound: // 404
+                        // will happen if server hasn't setup the room yet
+                        // Debug.LogError(LogName + "Couldn't find room: " + this.room + "\n" + response.ToString());
+                        break;
+                    default:
+                        Debug.LogError(LogName + "Request Failed: " + response.StatusCode + "\n" + response.ToString());
+                        // throw new Exception(LogName + "Request Failed: " + response.StatusCode + "\n" + response.ToString());
+                        break;
+                }
+                
+                return false;
+            }
+        }
+
+        private async Task<bool> getAddressFromUdp()
+        {
+            await Task.Delay(1);
+            throw new NotImplementedException(); // TODO: Implement
+            // return false;
         }
 
 
@@ -408,7 +537,7 @@ namespace Comms
         public void ForceReconnect()
         {
             CloseConnection();
-            StartConnection();
+            this.setTargetAndStartConnection();
         }
 
 
