@@ -22,6 +22,9 @@ namespace Comms
     public enum CommunicationHeaderType { Length, Time }
 
     [System.Serializable]
+    public enum TargettingStrategy { Manual, Web, UDP }
+
+    [System.Serializable]
     public struct CommunicationEndpoint
     {
         [SerializeField]
