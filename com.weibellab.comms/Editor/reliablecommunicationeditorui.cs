@@ -18,7 +18,7 @@ namespace Comms
         private static string[] eventHandlerToolbar = new string[] { "Configuration", "Data Events", "Status Events" };
         private int openTab = 0;
 
-        private static string[] ipStrategyToolbar = new string[] {"Manual", "Web", "UDP"};
+        private static string[] ipStrategyToolbar = new string[] {"Manual (default)", "Web", "UDP (unsupported)"};
 
         private bool expandWebExtras = false;
 
@@ -125,31 +125,7 @@ namespace Comms
                     break;
 
                 default: // Configuration
-                    EditorGUILayout.LabelField("Socket name, type, and host/port", EditorStyles.boldLabel);
-                    EditorGUI.indentLevel += 1;
-
-                    GUILayout.BeginHorizontal();
-                    EditorGUILayout.LabelField(string.Format("Socket type", GUILayout.Width(10)));
-                    GUILayout.FlexibleSpace();
-                    if (GUILayout.Button("Server", isServer.boolValue ? ToggleButtonStyleToggled : ToggleButtonStyleNormal))
-                    {
-                        isServer.boolValue = true;
-
-                    }
-                    if (GUILayout.Button("Client", !isServer.boolValue ? ToggleButtonStyleToggled : ToggleButtonStyleNormal))
-                    {
-                        isServer.boolValue = false;
-                    }
-                    GUILayout.EndHorizontal();
-                    c.Host.Name = EditorGUILayout.TextField("Endpoint Name", c.Host.Name);
-                    
-                    if (c.isServer)
-                    {
-                        // Get port to host on
-                        c.ListenPort = EditorGUILayout.IntField("Server Port:", c.ListenPort);
-                    }
-
-                    /* Connection Strategy (Manual/Web/Udp) */
+                /* Connection Strategy (Manual/Web/Udp) */
                     EditorGUI.indentLevel++;
                     c.strategy = (TargettingStrategy) GUILayout.Toolbar((int)c.strategy, ipStrategyToolbar);
                     switch (c.strategy) {
@@ -170,6 +146,34 @@ namespace Comms
                             break;
                     }
                     EditorGUI.indentLevel--;
+                    EditorGUILayout.Space();
+
+
+                    EditorGUILayout.LabelField("Socket name, type, and host/port", EditorStyles.boldLabel);
+                    EditorGUI.indentLevel += 1;
+
+                    GUILayout.BeginHorizontal();
+                    EditorGUILayout.LabelField(string.Format("Socket type", GUILayout.Width(10)));
+                    GUILayout.FlexibleSpace();
+                    if (GUILayout.Button("Server", isServer.boolValue ? ToggleButtonStyleToggled : ToggleButtonStyleNormal))
+                    {
+                        isServer.boolValue = true;
+
+                    }
+                    if (GUILayout.Button("Client", !isServer.boolValue ? ToggleButtonStyleToggled : ToggleButtonStyleNormal))
+                    {
+                        isServer.boolValue = false;
+                    }
+                    GUILayout.EndHorizontal();
+                    c.Host.Name = EditorGUILayout.TextField("Connection Name", c.Host.Name);
+                    
+                    if (c.isServer)
+                    {
+                        // Get port to host on
+                        c.ListenPort = EditorGUILayout.IntField("Server Port:", c.ListenPort);
+                    }
+
+                    
 
                     this.drawMessageHeaders(c);
                     break;
@@ -181,12 +185,16 @@ namespace Comms
         }
 
         public void drawWebIpStrategy(ReliableCommunication c) {
-            EditorGUILayout.LabelField("If your devices are on different networks or have variable IP addresses, you may wish to use this method to find the device before connecting");
-            
+            EditorGUILayout.LabelField("If your devices have variable IPs, \nyou may wish to use this method to find\nthe device before connecting.\nUse github.com/WeibelLab/Comms/tree/master/webserver\nfor the server",
+            GUILayout.MinHeight(80),
+            GUILayout.MinWidth(400));
+            EditorGUILayout.Space();
+            // Web Portal
+            c.webserverSyncAddress = EditorGUILayout.TextField("Web Portal", c.webserverSyncAddress);
+
             // Choose a Room
             EditorGUILayout.BeginHorizontal();
-            EditorGUILayout.LabelField("Room");
-            c.room = EditorGUILayout.TextField(c.room);
+            c.room = EditorGUILayout.TextField("Room Name", c.room);
             if (GUILayout.Button("Generate")) {
                 c.room = System.Guid.NewGuid().ToString();
             }
@@ -194,40 +202,33 @@ namespace Comms
 
             // Set the passkey
             EditorGUILayout.BeginHorizontal();
-            EditorGUILayout.LabelField("Passkey");
-            c.key = EditorGUILayout.TextField(c.key);
+            c.key = EditorGUILayout.TextField("Room Passkey", c.key);
             if (GUILayout.Button("Generate")) {
                 c.key = System.Guid.NewGuid().ToString();
             }
             EditorGUILayout.EndHorizontal();
 
-            // More
-            this.expandWebExtras = EditorGUILayout.BeginFoldoutHeaderGroup(this.expandWebExtras, "more");
-            if (this.expandWebExtras) {
-                // Set the webserver
-                EditorGUILayout.BeginHorizontal();
-                EditorGUILayout.LabelField("web portal");
-                c.webserverSyncAddress = EditorGUILayout.TextField(c.webserverSyncAddress);
-                EditorGUILayout.EndHorizontal();
-
-                // Set the ID
-                EditorGUILayout.BeginHorizontal();
-                EditorGUILayout.LabelField("ID");
-                c.id = EditorGUILayout.TextField(c.id);
-                if (GUILayout.Button("Generate")) {
-                    c.id = System.Guid.NewGuid().ToString();
-                }
-                EditorGUILayout.EndHorizontal();
+            // Set the ID
+            EditorGUILayout.BeginHorizontal();
+            c.id = EditorGUILayout.TextField("This Connection's Name", c.id);
+            if (GUILayout.Button("Generate")) {
+                c.id = System.Guid.NewGuid().ToString();
             }
-            EditorGUILayout.EndFoldoutHeaderGroup();
+            EditorGUILayout.EndHorizontal();
         }
 
         public void drawUdpIpStrategy(ReliableCommunication c) {
-            EditorGUILayout.LabelField("Let's setup with Udp");
+            EditorGUILayout.LabelField("This feature haven't been implemented\nit will let you do a local network broadcast\nto find connections", 
+            GUILayout.MinHeight(60),
+            GUILayout.MinWidth(400));
+            EditorGUILayout.Space();
         }
 
         public void drawManualIpStrategy(ReliableCommunication c) {
-            EditorGUILayout.LabelField("Manually set the IP address and port of the device you want to connect to.");
+            EditorGUILayout.LabelField("Manually set the IP address and port\nof the device you want to connect to.",
+            GUILayout.MinHeight(40),
+            GUILayout.MinWidth(400));
+            EditorGUILayout.Space();
             // Server / Client Address/Port
             if (!c.isServer)
             {
