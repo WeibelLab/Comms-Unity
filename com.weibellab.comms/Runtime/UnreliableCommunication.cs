@@ -59,7 +59,7 @@ namespace Comms
         CommunicationStatistics statisticsReporter;
 
         [SerializeField]
-        public List<CommunicationEndpoint> Targets;
+        public List<CommunicationEndpoint> Targets = new List<CommunicationEndpoint>();
 
         // ================================================================================ Unity Events =========================================================== //
         /// <summary>
