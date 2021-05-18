@@ -607,6 +607,12 @@ namespace Comms
             {
                 Debug.Log(LogName + " Socket Exception while sending: " + e);
             }
+            catch (ObjectDisposedException e)
+            {
+                Debug.LogWarning(LogName + " Tried to send message through stream that was closed/closing. Dropping message and forcing stream to close.");
+                tcpClient.Close();
+                tcpClient = null;
+            }
         }
 
 
