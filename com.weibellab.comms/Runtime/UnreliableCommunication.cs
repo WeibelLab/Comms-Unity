@@ -28,19 +28,20 @@ namespace Comms
     {
 
         [Tooltip("Used for logs so that we know which class is throwing errors")]
-        public string Name;
+        public string Name = "";
 
         [Tooltip("Port number the socket should be using for listening")]
         public int port = 12345;
+        public string hostingAddress = "0.0.0.0";
 
         [HideInInspector]
         public int WaitToAbortMs = 100;
 
         // message handlers
-        public CommunicationStringEvent StringMessageReceived;
-        public CommunicationByteEvent ByteMessageReceived;
-        public CommunicationJsonEvent JsonMessageReceived;
-        public CommunicationMessageType EventType;
+        public CommunicationStringEvent StringMessageReceived = new CommunicationStringEvent();
+        public CommunicationByteEvent ByteMessageReceived = new CommunicationByteEvent();
+        public CommunicationJsonEvent JsonMessageReceived = new CommunicationJsonEvent();
+        public CommunicationMessageType EventType = CommunicationMessageType.Byte;
 
         [HideInInspector]
         private CommunicationMessageType runningEventType; // the type of event that we care about
@@ -82,7 +83,6 @@ namespace Comms
                 statisticsReporter.Name = Name;
                 statisticsReporter.TCP = false;
             }
-
         }
 
         /// <summary>
@@ -146,7 +146,8 @@ namespace Comms
             // creates the socket
             try
             {
-                _impl = new UdpClient(port);
+                IPEndPoint endpoint = new IPEndPoint(IPAddress.Parse(this.hostingAddress), this.port);
+                _impl = new UdpClient(endpoint);
                 socketThread = new Thread(new ThreadStart(SocketThreadLoop));
                 socketThread.IsBackground = true;
                 stopThread = false;
@@ -200,8 +201,8 @@ namespace Comms
 
         public void RestartServer()
         {
-            this.StartServer();
             this.StopServer();
+            this.StartServer();
         }
 
         // whenever socket is enabled, we enable the thread (The socket won't run if disabled)
