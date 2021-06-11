@@ -92,6 +92,7 @@ namespace Comms
         // dropping packets?
         [Tooltip("Data events will be called only with the last message received. Use wisely")]
         public bool dropAccumulatedMessages = false;
+        public int skipNFrames = 0;
 
         // Thread variables
         [HideInInspector]
@@ -190,8 +191,32 @@ namespace Comms
                 onConnectRaised = false;
             }
 
+            //Debug.Log($"{LogName}skipping every {this.skipNFrames} frames. Current frame {Time.frameCount} % {this.skipNFrames + 1} = {Time.frameCount % (this.skipNFrames + 1)}");
+            if (Time.frameCount % (this.skipNFrames + 1) != 0)
+            {
+                if (this.dropAccumulatedMessages && messageQueue.Count > 1)
+                {
+                    byte[] msgBytes;
+                    Queue<byte[]> tmpQ;
+                    lock (messageQueueLock)
+                    {
+                        // copies the queue from the thread
+                        tmpQ = messageQueue;
+                        messageQueue = new Queue<byte[]>();
+
+                        do
+                        {
+                            msgBytes = tmpQ.Dequeue();
+                            statisticsReporter.RecordDroppedMessage();
+                        }
+                        while (tmpQ.Count > 0);
+
+                        messageQueue.Enqueue(msgBytes); // keep one
+                    }
+                }
+            }
             // passess all the messages that are missing
-            if (messageQueue.Count > 0)
+            else if (messageQueue.Count > 0)
             {
                 // we should not spend time processing while the queue is locked
                 // as this might disconnect the socket due to timeout
