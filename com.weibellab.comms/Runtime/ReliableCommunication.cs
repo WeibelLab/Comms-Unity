@@ -49,26 +49,13 @@ namespace Comms
     /// Authors: Danilo Gaques, Tommy Sharkey
     /// </summary>
     /// 
-    public class ReliableCommunication : MonoBehaviour
+    public class ReliableCommunication : Comms
     {
-        /// <summary>
-        /// We raise this exception when the socket disconnects mid-read
-        /// </summary>
-        public class SocketDisconnected : Exception
-        {
-        }
 
         #region public members
         // Determining type of socket communication
         public bool isServer;
         public int ListenPort;
-        public CommunicationMessageType EventType;
-        //public CommunicationHeaderType[] Headers = new CommunicationHeaderType[1] { CommunicationHeaderType.Length };
-
-        // message handlers
-        public CommunicationStringEvent StringMessageReceived;
-        public CommunicationByteEvent ByteMessageReceived;
-        public CommunicationJsonEvent JsonMessageReceived;
 
         // events
         public ReliableCommunicationSocketConnected OnConnect;
@@ -86,18 +73,31 @@ namespace Comms
         //public bool useRegularEventCallback = true;
 
         // message headers
-        public bool dynamicMessageLength;
-        public int fixedMessageLength = 1024;
+        public CommunicationHeaderType messageFormat = CommunicationHeaderType.Dynamic;
+        public int fixedMessageLength { 
+            get
+            {
+                if (messageFormat == CommunicationHeaderType.Fixed)
+                {
+                    if (this.headerFormat.IsArray && this.headerFormat.list[0].HasField("length"))
+                    {
+                        return (int)this.headerFormat.list[0]["length"].i;
+                    }
+                    else
+                    {
+                        fixedMessageLength = 1024;
+                        return fixedMessageLength;
+                    }
+                }
 
-        // dropping packets?
-        [Tooltip("Data events will be called only with the last message received. Use wisely")]
-        public bool dropAccumulatedMessages = false;
-        public int skipNFrames = 0;
+                return -1;
+            }
+            set
+            {
+                this.HeaderFormat = "[{\"name\": \"data\", \"length\":" + value.ToString() + "}]";
+            }
+        }
 
-        // Thread variables
-        [HideInInspector]
-        public Queue<byte[]> messageQueue = new Queue<byte[]>();
-        System.Object messageQueueLock = new System.Object();
 
 
         // Timeout
@@ -127,7 +127,6 @@ namespace Comms
         // TCP
         private TcpListener selfServer;
         private TcpClient tcpClient;
-        private bool killThreadRequested = false;
 
         // Shared
         private Thread listenerThread;
@@ -151,16 +150,14 @@ namespace Comms
         }
 
 
-        // Socket statistics
-        CommunicationStatistics statisticsReporter;
-
-
         #region UnityEvents
         /// <summary>
         /// Called whenever the behavior is initialized by the application
         /// </summary>
-        private void Awake()
+        new void Awake()
         {
+            base.Awake();
+
             if (Host.Name.Length == 0)
                 Host.Name = this.gameObject.name;
 
@@ -178,7 +175,7 @@ namespace Comms
         }
 
         // Update is called once per frame
-        void Update()
+        new protected void Update()
         {
             // onConnectEvents should always come before any messages
             if (onConnectRaised)
@@ -191,78 +188,9 @@ namespace Comms
                 onConnectRaised = false;
             }
 
-            //Debug.Log($"{LogName}skipping every {this.skipNFrames} frames. Current frame {Time.frameCount} % {this.skipNFrames + 1} = {Time.frameCount % (this.skipNFrames + 1)}");
-            if (Time.frameCount % (this.skipNFrames + 1) != 0)
-            {
-                if (this.dropAccumulatedMessages && messageQueue.Count > 1)
-                {
-                    byte[] msgBytes;
-                    Queue<byte[]> tmpQ;
-                    lock (messageQueueLock)
-                    {
-                        // copies the queue from the thread
-                        tmpQ = messageQueue;
-                        messageQueue = new Queue<byte[]>();
 
-                        do
-                        {
-                            msgBytes = tmpQ.Dequeue();
-                            statisticsReporter.RecordDroppedMessage();
-                        }
-                        while (tmpQ.Count > 0);
+            base.Update();
 
-                        messageQueue.Enqueue(msgBytes); // keep one
-                    }
-                }
-            }
-            // passess all the messages that are missing
-            else if (messageQueue.Count > 0)
-            {
-                // we should not spend time processing while the queue is locked
-                // as this might disconnect the socket due to timeout
-                Queue<byte[]> tmpQ;
-                lock (messageQueueLock)
-                {
-                    // copies the queue from the thread
-                    tmpQ = messageQueue;
-                    messageQueue = new Queue<byte[]>();
-                }
-
-                // now we can process our messages
-                while (tmpQ.Count > 0)
-                {
-                    // process message received
-                    byte[] msgBytes;
-                    msgBytes = tmpQ.Dequeue();
-
-                    // should we drop packets?
-                    while (dropAccumulatedMessages && tmpQ.Count > 0)
-                    {
-                        msgBytes = tmpQ.Dequeue();
-                        statisticsReporter.RecordDroppedMessage();
-                    }
-
-                    // call event handlers
-                    if (this.EventType == CommunicationMessageType.Byte) // Byte Message
-                    {
-                        ByteMessageReceived.Invoke(msgBytes);
-                    }
-                    else
-                    {
-                        string msgString = Encoding.UTF8.GetString(msgBytes);
-
-                        if (this.EventType == CommunicationMessageType.String) // String Message
-                        {
-                            StringMessageReceived.Invoke(msgString);
-                        }
-                        else // Json Message
-                        {
-                            JSONObject msgJson = new JSONObject(msgString);
-                            JsonMessageReceived.Invoke(msgJson);
-                        }
-                    }
-                }
-            }
 
             // onDisconnectEvents should be passed after all messages are sent to clients
             if (onDisconnectRaised)
@@ -587,24 +515,30 @@ namespace Comms
 
             // Build message with Headers
             byte[] bytesToSend;
-            if (dynamicMessageLength)
+            switch (messageFormat)
             {
-                byte[] messageLength = BitConverter.GetBytes((UInt32)msg.Length);
-                bytesToSend = new byte[msg.Length + sizeof(UInt32)];
-                Buffer.BlockCopy(messageLength, 0, bytesToSend, 0, sizeof(UInt32));
-                Buffer.BlockCopy(msg, 0, bytesToSend, sizeof(UInt32), msg.Length);
-            }
-            else
-            {
-                bytesToSend = new byte[fixedMessageLength];
-                if (msg.Length > fixedMessageLength)
-                {
-                    Debug.LogError(string.Format("{0}Message is too large! (Expected {1}, received {2} bytes)", LogName, fixedMessageLength, msg.Length));
-                }
-                else
-                {
-                    Buffer.BlockCopy(msg, 0, bytesToSend, 0, msg.Length);
-                }
+                case CommunicationHeaderType.Dynamic:
+                    byte[] messageLength = BitConverter.GetBytes((UInt32)msg.Length);
+                    bytesToSend = new byte[msg.Length + sizeof(UInt32)];
+                    Buffer.BlockCopy(messageLength, 0, bytesToSend, 0, sizeof(UInt32));
+                    Buffer.BlockCopy(msg, 0, bytesToSend, sizeof(UInt32), msg.Length);
+                    break;
+                case CommunicationHeaderType.Fixed:
+                    bytesToSend = new byte[fixedMessageLength];
+                    if (msg.Length > fixedMessageLength)
+                    {
+                        Debug.LogError(string.Format("{0}Message is too large! (Expected {1}, received {2} bytes)", LogName, fixedMessageLength, msg.Length));
+                    }
+                    else
+                    {
+                        Buffer.BlockCopy(msg, 0, bytesToSend, 0, msg.Length);
+                    }
+                    break;
+                case CommunicationHeaderType.Custom:
+                default:
+                    bytesToSend = msg;
+                    break;
+
             }
 
             // Send Message
@@ -634,7 +568,7 @@ namespace Comms
             }
             catch (ObjectDisposedException e)
             {
-                Debug.LogWarning(LogName + " Tried to send message through stream that was closed/closing. Dropping message and forcing stream to close.");
+                Debug.LogWarning(LogName + " Tried to send message through stream that was closed/closing. Dropping message and forcing stream to close.\n" + e);
                 tcpClient.Close();
                 tcpClient = null;
             }
@@ -857,47 +791,13 @@ namespace Comms
                 statisticsReporter.RecordConnectionEstablished();
                 try
                 {
-
-                    if (dynamicMessageLength)
+                    while (!killThreadRequested)
                     {
-                        byte[] lengthHeader = new byte[4];
-                        while (!killThreadRequested)
+                        var data = this.ParseHeader(stream);
+                        statisticsReporter.RecordMessageReceived();
+                        lock (messageQueueLock)
                         {
-                            // reads 4 bytes - header
-                            readToBuffer(stream, lengthHeader, lengthHeader.Length);
-
-                            // convert to int (UInt32LE)
-                            UInt32 msgLength = BitConverter.ToUInt32(lengthHeader, 0);
-
-                            // create appropriately sized byte array for message
-                            byte[] bytes = new byte[msgLength];
-
-                            // create appropriately sized byte array for message
-                            bytes = new byte[msgLength];
-                            readToBuffer(stream, bytes, bytes.Length);
-
-                            statisticsReporter.RecordMessageReceived();
-                            lock (messageQueueLock)
-                            {
-                                messageQueue.Enqueue(bytes);
-                            }
-                        }
-
-                    }
-                    else
-                    {
-                        while (!killThreadRequested)
-                        {
-                            // create appropriately sized byte array for message
-                            byte[] bytes = new byte[fixedMessageLength];
-
-                            readToBuffer(stream, bytes, bytes.Length);
-
-                            statisticsReporter.RecordMessageReceived();
-                            lock (messageQueueLock)
-                            {
-                                messageQueue.Enqueue(bytes);
-                            }
+                            messageQueue.Enqueue(data);
                         }
                     }
                 }
@@ -907,33 +807,6 @@ namespace Comms
                     // let's expose that exception and handle it below
                     throw ioException.InnerException;
                 }
-            }
-        }
-
-
-        /// <summary>
-        /// Reads readLength bytes from a network stream and saves it to buffer
-        /// </summary>
-        /// <param name="buffer"></param>
-        /// <param name="readLength"></param>
-        void readToBuffer(NetworkStream stream, byte[] buffer, int readLength)
-        {
-            int offset = 0;
-            // keeps reading until a full message is received
-            while (offset < buffer.Length)
-            {
-                int bytesRead = stream.Read(buffer, offset, readLength - offset); // read from stream
-                statisticsReporter.RecordPacketReceived(bytesRead);
-
-                // "  If the remote host shuts down the connection, and all available data has been received,
-                // the Read method completes immediately and return zero bytes. "
-                // https://docs.microsoft.com/en-us/dotnet/api/system.net.sockets.networkstream.read?view=netframework-4.0
-                if (bytesRead == 0)
-                {
-                    throw new SocketDisconnected();// returning here means that we are done
-                }
-
-                offset += bytesRead; // updates offset
             }
         }
 

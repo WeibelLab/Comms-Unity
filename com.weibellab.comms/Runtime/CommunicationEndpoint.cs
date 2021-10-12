@@ -13,13 +13,15 @@ namespace Comms
     public class CommunicationStringEvent : UnityEvent<string> { }
     [System.Serializable]
     public class CommunicationByteEvent : UnityEvent<byte[]> { }
+    [System.Serializable]
+    public class CommunicationCustomEvent : UnityEvent<Dictionary<string, byte[]>> { }
 
 
     [System.Serializable]
-    public enum CommunicationMessageType { Byte, String, Json }
+    public enum CommunicationMessageType { Byte, String, Json, Custom }
 
     [System.Serializable]
-    public enum CommunicationHeaderType { Length, Time }
+    public enum CommunicationHeaderType { Fixed=1, Dynamic=0, Custom=2 }
 
     [System.Serializable]
     public enum TargettingStrategy { Manual, Web, UDP }

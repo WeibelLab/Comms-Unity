@@ -19,13 +19,17 @@ namespace Comms
         private int openTab = 0;
 
         private static string[] ipStrategyToolbar = new string[] {"Manual (default)", "Web", "UDP (unsupported)"};
-
         private bool expandWebExtras = false;
+        private static string[] messageFormatToolbar = new string[] { "Dynamic (default)", "Fixed Size", "Custom" };
+        private string customMessageHeader;
+
 
         private void OnEnable()
         {
             isServer = serializedObject.FindProperty("isServer");
             serverport = serializedObject.FindProperty("ListenPort");
+            ReliableCommunication c = (ReliableCommunication)target;
+            this.customMessageHeader = c.HeaderFormat;
         }
 
 
@@ -45,7 +49,7 @@ namespace Comms
                 EditorGUILayout.HelpBox(string.Format("{0}\nTCP {1}{2}", 
                     c.Host.Name,
                     string.Format("Server on port {0}", c.ListenPort),
-                    (c.dynamicMessageLength ? "" : ("\nStatic Messages with length " + c.fixedMessageLength))
+                    (c.messageFormat == CommunicationHeaderType.Fixed ? ("\nStatic Messages with length " + c.fixedMessageLength): "")
                     ), MessageType.Info, true);
             }
             else {
@@ -55,7 +59,7 @@ namespace Comms
                         string.Format("Client of {0} room @ {1}", 
                             c.room, 
                             c.webserverSyncAddress),
-                        (c.dynamicMessageLength ? "" : ("\nStatic Messages with length " + c.fixedMessageLength))
+                        (c.messageFormat == CommunicationHeaderType.Fixed ? ("\nStatic Messages with length " + c.fixedMessageLength): "")
                         ), MessageType.Info, true);
                 }
                 // else if (c.strategy == TargettingStrategy.Udp) {
@@ -68,7 +72,7 @@ namespace Comms
                             c.Host.Address, 
                             c.Host.Port, 
                             c.Host.Name),
-                        (c.dynamicMessageLength ? "" : ("\nStatic Messages with length " + c.fixedMessageLength))
+                        (c.messageFormat == CommunicationHeaderType.Fixed ? ("\nStatic Messages with length " + c.fixedMessageLength): "")
                         ), MessageType.Info, true);
                 }
             }
@@ -103,6 +107,10 @@ namespace Comms
                     if (GUILayout.Button("Json", c.EventType == CommunicationMessageType.Json ? ToggleButtonStyleToggled : ToggleButtonStyleNormal))
                     {
                         c.EventType = CommunicationMessageType.Json;
+                    }
+                    if (GUILayout.Button("Custom", c.EventType == CommunicationMessageType.Custom ? ToggleButtonStyleToggled: ToggleButtonStyleNormal))
+                    {
+                        c.EventType = CommunicationMessageType.Custom;
                     }
                     GUILayout.EndHorizontal();
 
@@ -252,28 +260,43 @@ namespace Comms
         /// </summary>
         /// <param name="c"></param>
         public void drawMessageHeaders(ReliableCommunication c) {
-            // Message Headers
-            EditorGUILayout.LabelField(string.Format("Message Length ({0})", c.dynamicMessageLength ? "dynamic" : "fixed"), EditorStyles.boldLabel);
-            EditorGUI.indentLevel += 1;
+
+            EditorGUI.indentLevel++;
+            c.messageFormat = (CommunicationHeaderType)GUILayout.Toolbar((int)c.messageFormat, messageFormatToolbar);
+            switch (c.messageFormat)
+            {
+                case CommunicationHeaderType.Fixed:
+                    c.fixedMessageLength = EditorGUILayout.IntField("Fixed Message Size (bytes)", c.fixedMessageLength);
+                    break;
+                case CommunicationHeaderType.Dynamic:
+                    EditorGUILayout.LabelField("All messages are prepended with a 4 byte integer describing the message length in bytes");
+                    break;
+                case CommunicationHeaderType.Custom:
+                    drawCustomHeader(c);
+                    break;
+                default:
+                    EditorGUILayout.LabelField("Unknown type" + c.strategy);
+                    break;
+            }
+            EditorGUI.indentLevel--;
+        }
+
+        public void drawCustomHeader(ReliableCommunication c)
+        {
             EditorGUILayout.BeginHorizontal();
-            if (GUILayout.Button("Toggle for dynamic messages", c.dynamicMessageLength ? ToggleButtonStyleToggled : ToggleButtonStyleNormal))
+            this.customMessageHeader = EditorGUILayout.TextArea(this.customMessageHeader, GUILayout.Height(80));
+            
+            var json = JSONObject.Create(customMessageHeader);
+            if (json && json.type != JSONObject.Type.NULL && !json.ToString().Equals("{}"))
             {
-                c.dynamicMessageLength = !c.dynamicMessageLength;
+                c.HeaderFormat = json.ToString();
+                this.customMessageHeader = c.HeaderFormat;
             }
-            // if (GUILayout.Button("Time Sent", c.TimeHeader ? ToggleButtonStyleToggled : ToggleButtonStyleNormal))
-            // {
-            //     c.TimeHeader = !c.TimeHeader;
-            // }
-            // if (GUILayout.Button("Calculate Bandwidth", c.MonitorBandwidth ? ToggleButtonStyleToggled : ToggleButtonStyleNormal))
-            // {
-            //     c.MonitorBandwidth = !c.MonitorBandwidth;
-            //}
+            else
+            {
+                EditorGUILayout.LabelField("Invalid JSON");
+            }
             EditorGUILayout.EndHorizontal();
-            if (!c.dynamicMessageLength)
-            {
-                c.fixedMessageLength = EditorGUILayout.IntField("Fixed Message Size (bytes)", c.fixedMessageLength);
-            }
-            EditorGUI.indentLevel -= 1;
         }
     }
 }
