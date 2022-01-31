@@ -69,6 +69,16 @@ namespace Comms
         public CommunicationStringEvent StringMessageReceived;
         public CommunicationByteEvent ByteMessageReceived;
         public CommunicationJsonEvent JsonMessageReceived;
+        /// <summary>
+        /// The callback that will be used to parse messages received by comms.
+        /// By default this is set to use the Comms parser, but you can override it to use your own parser.
+        /// This callback runs on a separate thread, so if you override it, 
+        /// you may need to create a queue to handle the parsed messages (Unity doesn't support scene changes outside the main thread)
+        /// Additionally, you may wish to listen for when comms is killed by checking killThreadRequested
+        /// while (!commsRef.killThreadRequested) { ... implement your parser here }
+        /// Check ReliableCommunication.DefaultMessageParser() for an example
+        /// </summary>
+        public System.Action<NetworkStream> MessageParser;
 
         // events
         public ReliableCommunicationSocketConnected OnConnect;
@@ -280,7 +290,8 @@ namespace Comms
 
         private void OnEnable()
         {
-            if (ConnectOnEnable) {
+            if (ConnectOnEnable)
+            {
                 this.setTargetAndStartConnection();
             }
         }
@@ -352,7 +363,6 @@ namespace Comms
         private async void setTargetAndStartConnection()
         {
             // yield return null;
-            if (Application.isPlaying) {
                 Task<bool> task;
                 switch (this.strategy)
                 {
@@ -362,7 +372,8 @@ namespace Comms
                     case TargettingStrategy.Web:
                         task = this.getAddressFromWeb();
                         await task;
-                        while (task.Result == false && Application.isPlaying) {
+                        while (task.Result == false && Application.isPlaying)
+                        {
                             Debug.Log(LogName + "Failed to Connect");
                             Task.Delay(1000).Wait();
                             task = this.getAddressFromWeb();
@@ -373,7 +384,6 @@ namespace Comms
                     case TargettingStrategy.UDP:
                         task = this.getAddressFromUdp();
                         await task;
-                        while (task.Result == false && Application.isPlaying) {
                             Debug.Log(LogName + "Failed to Connect");
                             Task.Delay(100).Wait();
                             task = this.getAddressFromUdp();
@@ -412,15 +422,17 @@ namespace Comms
             // Set IP address
             if (response.IsSuccessStatusCode) {
                 JSONObject responseJson = new JSONObject(responseString);
-                if (this.isServer) {
+                if (this.isServer)
+                {
                     // Do Nothing - let the clients connect to you
                 }
-                else {
+                else
+                {
                     // Parse IP Address
                     String ip = responseJson["ip"].str;
                     Regex rg = new Regex(@"[0-9]*\.[0-9]*\.[0-9]*\.[0-9]*");
                     MatchCollection matches = rg.Matches(ip);
-                    if (matches.Count > 0) {ip = matches[0].Value;}
+                    if (matches.Count > 0) { ip = matches[0].Value; }
                     this.Host.Address = ip;
                     Debug.Log(LogName + "Set IP Address to " + ip);
 
@@ -430,8 +442,8 @@ namespace Comms
                 return true;
             }
             // Handle errors
-            else {
-                switch (response.StatusCode) {
+            else
+            {
                     case HttpStatusCode.BadRequest: // 400
                         Debug.LogError(LogName + "Made a bad request\n" + response.ToString());
                         // throw new Exception(LogName + "Made a bad request\n" + response.ToString())
@@ -449,7 +461,7 @@ namespace Comms
                         // throw new Exception(LogName + "Request Failed: " + response.StatusCode + "\n" + response.ToString());
                         break;
                 }
-                
+
                 return false;
             }
         }
@@ -850,6 +862,52 @@ namespace Comms
             }
         }
 
+        private void DefaultMessageParser(NetworkStream stream)
+        {
+            if (this.dynamicMessageLength)
+            {
+                byte[] lengthHeader = new byte[4];
+                while (!killThreadRequested)
+                {
+                    // reads 4 bytes - header
+                    readToBuffer(stream, lengthHeader, lengthHeader.Length);
+
+                    // convert to int (UInt32LE)
+                    UInt32 msgLength = BitConverter.ToUInt32(lengthHeader, 0);
+
+                    // create appropriately sized byte array for message
+                    byte[] bytes = new byte[msgLength];
+
+                    // create appropriately sized byte array for message
+                    bytes = new byte[msgLength];
+                    readToBuffer(stream, bytes, bytes.Length);
+
+                    statisticsReporter.RecordMessageReceived();
+                    lock (messageQueueLock)
+                    {
+                        messageQueue.Enqueue(bytes);
+                    }
+                }
+
+            }
+            else
+            {
+                while (!killThreadRequested)
+                {
+                    // create appropriately sized byte array for message
+                    byte[] bytes = new byte[fixedMessageLength];
+
+                    readToBuffer(stream, bytes, bytes.Length);
+
+                    statisticsReporter.RecordMessageReceived();
+                    lock (messageQueueLock)
+                    {
+                        messageQueue.Enqueue(bytes);
+                    }
+                }
+            }
+        }
+
         private void SocketMessageReadingLoop(TcpClient tcpClientSocket, bool incoming = false)
         {
             using (NetworkStream stream = tcpClientSocket.GetStream())
@@ -857,49 +915,7 @@ namespace Comms
                 statisticsReporter.RecordConnectionEstablished();
                 try
                 {
-
-                    if (dynamicMessageLength)
-                    {
-                        byte[] lengthHeader = new byte[4];
-                        while (!killThreadRequested)
-                        {
-                            // reads 4 bytes - header
-                            readToBuffer(stream, lengthHeader, lengthHeader.Length);
-
-                            // convert to int (UInt32LE)
-                            UInt32 msgLength = BitConverter.ToUInt32(lengthHeader, 0);
-
-                            // create appropriately sized byte array for message
-                            byte[] bytes = new byte[msgLength];
-
-                            // create appropriately sized byte array for message
-                            bytes = new byte[msgLength];
-                            readToBuffer(stream, bytes, bytes.Length);
-
-                            statisticsReporter.RecordMessageReceived();
-                            lock (messageQueueLock)
-                            {
-                                messageQueue.Enqueue(bytes);
-                            }
-                        }
-
-                    }
-                    else
-                    {
-                        while (!killThreadRequested)
-                        {
-                            // create appropriately sized byte array for message
-                            byte[] bytes = new byte[fixedMessageLength];
-
-                            readToBuffer(stream, bytes, bytes.Length);
-
-                            statisticsReporter.RecordMessageReceived();
-                            lock (messageQueueLock)
-                            {
-                                messageQueue.Enqueue(bytes);
-                            }
-                        }
-                    }
+                    this.MessageParser(stream);
                 }
                 catch (System.IO.IOException ioException)
                 {
