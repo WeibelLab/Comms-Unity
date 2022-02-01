@@ -294,7 +294,6 @@ namespace Comms
 
         private void OnEnable()
         {
-            if (ConnectOnEnable) {
             if (ConnectOnEnable)
             {
                 this.setTargetAndStartConnection();
