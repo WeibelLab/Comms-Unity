@@ -10,13 +10,17 @@ namespace Comms
     {
 
         SerializedProperty isServer, serverport;
+        SerializedProperty matchmakingStrategyProperty;
+        SerializedProperty dynamicMessagesProperty;
 
         private static GUIStyle ToggleButtonStyleNormal = null;
         private static GUIStyle ToggleButtonStyleToggled = null;
-
+        
+        
 
         private static string[] eventHandlerToolbar = new string[] { "Configuration", "Data Events", "Status Events" };
         private int openTab = 0;
+        private int strategyComboBox = 0;
 
         private static string[] ipStrategyToolbar = new string[] {"Manual (default)", "Web", "UDP (unsupported)"};
 
@@ -26,6 +30,8 @@ namespace Comms
         {
             isServer = serializedObject.FindProperty("isServer");
             serverport = serializedObject.FindProperty("ListenPort");
+            matchmakingStrategyProperty = serializedObject.FindProperty("matchmakingStrategy");
+            dynamicMessagesProperty = serializedObject.FindProperty("dynamicMessageLength");
         }
 
 
@@ -43,31 +49,30 @@ namespace Comms
             /* INFO BOX */
             if (c.isServer) {
                 EditorGUILayout.HelpBox(string.Format("{0}\nTCP {1}{2}", 
-                    c.Host.Name,
-                    string.Format("Server on port {0}", c.ListenPort),
+                    c.ConnectionName,
+                    string.Format("Server on port {0}", c.ConnectionPort),
                     (c.dynamicMessageLength ? "" : ("\nStatic Messages with length " + c.fixedMessageLength))
                     ), MessageType.Info, true);
             }
             else {
-                if (c.strategy == TargettingStrategy.Web) {
+                if (c.matchmakingStrategy == TargettingStrategy.Web) {
                     EditorGUILayout.HelpBox(string.Format("{0}\nTCP {1}{2}", 
-                        c.Host.Name,
+                        c.ConnectionName,
                         string.Format("Client of {0} room @ {1}", 
                             c.room, 
                             c.webserverSyncAddress),
                         (c.dynamicMessageLength ? "" : ("\nStatic Messages with length " + c.fixedMessageLength))
                         ), MessageType.Info, true);
                 }
-                // else if (c.strategy == TargettingStrategy.Udp) {
+                // else if (c.matchmakingStrategy == TargettingStrategy.Udp) {
 
                 // }
                 else {
-                    EditorGUILayout.HelpBox(string.Format("{0}\nTCP {1}{2}", 
-                        c.Host.Name,
+                    EditorGUILayout.HelpBox(string.Format("{0}\nTCP {1}{2}",
+                        c.ConnectionName,
                         string.Format("Client of {0}:{1}", 
-                            c.Host.Address, 
-                            c.Host.Port, 
-                            c.Host.Name),
+                            c.ConnectionAddress, 
+                            c.ConnectionPort),
                         (c.dynamicMessageLength ? "" : ("\nStatic Messages with length " + c.fixedMessageLength))
                         ), MessageType.Info, true);
                 }
@@ -85,10 +90,11 @@ namespace Comms
             switch (openTab)
             {
                 case 1: //DataEvents
+
+                    this.drawMessageHeaders(c);
                     EditorGUILayout.LabelField("Should we drop acummulated packets?", EditorStyles.boldLabel);
                     EditorGUILayout.PropertyField(serializedObject.FindProperty("dropAccumulatedMessages"));
                     EditorGUILayout.LabelField("", GUILayout.Height(6));
-
                     // JSON / string / byte messages
                     EditorGUILayout.LabelField("What kinds of messages will be handled here?", EditorStyles.boldLabel);
                     GUILayout.BeginHorizontal();
@@ -120,33 +126,19 @@ namespace Comms
                     EditorGUILayout.LabelField("When the socket disconnects (or a client disconnects from it):", EditorStyles.boldLabel);
                     EditorGUILayout.PropertyField(serializedObject.FindProperty("OnDisconnect"));
 
+                    // if the server checkbox is checked
+                    if (isServer.boolValue)
+                    {
+
+                    }
+
                     //EditorGUILayout.LabelField("When the socket raises an error:", EditorStyles.boldLabel);
                     //EditorGUILayout.PropertyField(serializedObject.FindProperty("OnError"));
                     break;
 
                 default: // Configuration
-                /* Connection Strategy (Manual/Web/Udp) */
-                    EditorGUI.indentLevel++;
-                    c.strategy = (TargettingStrategy) GUILayout.Toolbar((int)c.strategy, ipStrategyToolbar);
-                    switch (c.strategy) {
-                        case TargettingStrategy.Manual:
-                            c.strategy = TargettingStrategy.Manual;
-                            this.drawManualIpStrategy(c);
-                            break;
-                        case TargettingStrategy.Web:
-                            c.strategy = TargettingStrategy.Web;
-                            this.drawWebIpStrategy(c);
-                            break;
-                        case TargettingStrategy.UDP:
-                            c.strategy = TargettingStrategy.UDP;
-                            this.drawUdpIpStrategy(c);
-                            break;
-                        default:
-                            EditorGUILayout.LabelField("Unknown type" + c.strategy);
-                            break;
-                    }
-                    EditorGUI.indentLevel--;
-                    EditorGUILayout.Space();
+                         /* Connection Strategy (Manual/Web/Udp) */
+                    
 
 
                     EditorGUILayout.LabelField("Socket name, type, and host/port", EditorStyles.boldLabel);
@@ -155,32 +147,63 @@ namespace Comms
                     GUILayout.BeginHorizontal();
                     EditorGUILayout.LabelField(string.Format("Socket type", GUILayout.Width(10)));
                     GUILayout.FlexibleSpace();
+
                     if (GUILayout.Button("Server", isServer.boolValue ? ToggleButtonStyleToggled : ToggleButtonStyleNormal))
                     {
                         isServer.boolValue = true;
-
+                        
                     }
                     if (GUILayout.Button("Client", !isServer.boolValue ? ToggleButtonStyleToggled : ToggleButtonStyleNormal))
                     {
                         isServer.boolValue = false;
+                        
                     }
                     GUILayout.EndHorizontal();
-                    c.Host.Name = EditorGUILayout.TextField("Connection Name", c.Host.Name);
-                    
+
+                    EditorGUILayout.PropertyField(serializedObject.FindProperty("ConnectionName"), new GUIContent("Connection Name"));
+
                     if (c.isServer)
                     {
                         // Get port to host on
-                        c.ListenPort = EditorGUILayout.IntField("Server Port:", c.ListenPort);
+
+                        EditorGUILayout.PropertyField(serializedObject.FindProperty("ConnectionPort"), new GUIContent("Server Port"));
+                    } else
+                    {
+
+                        EditorGUILayout.LabelField("Chose a way of broadcasting client/server info with other clients", EditorStyles.boldLabel);
+                        //EditorGUI.indentLevel++;
+                        EditorGUILayout.PropertyField(matchmakingStrategyProperty);
+
+
+                        //c.matchmakingStrategy = (TargettingStrategy)GUILayout.Toolbar((int)c.matchmakingStrategy, ipStrategyToolbar);
+                        switch (c.matchmakingStrategy)
+                        {
+                            case TargettingStrategy.Manual:
+                                this.drawManualIpStrategy(c);
+                                break;
+                            case TargettingStrategy.Web:
+                                this.drawWebIpStrategy(c);
+                                break;
+                            case TargettingStrategy.UDP:
+                                this.drawUdpIpStrategy(c);
+                                break;
+                            default:
+                                EditorGUILayout.LabelField("Unknown type" + c.matchmakingStrategy);
+                                break;
+                        }
+                        //EditorGUI.indentLevel--;
+                        EditorGUILayout.Space();
                     }
 
                     
 
-                    this.drawMessageHeaders(c);
                     break;
 
             }
 
             serializedObject.ApplyModifiedProperties();
+            
+
 
         }
 
@@ -233,13 +256,18 @@ namespace Comms
             if (!c.isServer)
             {
                 // Get Server Address
-                EditorGUILayout.BeginHorizontal();
-                GUILayout.FlexibleSpace();
-                EditorGUILayout.LabelField("host:", GUILayout.Width(40));
-                c.Host.Address = EditorGUILayout.TextField(GUIContent.none, c.Host.Address, GUILayout.MinWidth(40));
-                EditorGUILayout.LabelField("port:", GUILayout.Width(40));
-                c.Host.Port = EditorGUILayout.IntField(GUIContent.none, c.Host.Port, GUILayout.MinWidth(40));
-                EditorGUILayout.EndHorizontal();
+                //EditorGUILayout.BeginHorizontal();
+                //GUILayout.FlexibleSpace();
+                GUILayout.ExpandWidth(false);
+                EditorGUILayout.PropertyField(serializedObject.FindProperty("ConnectionAddress"), new GUIContent("Host","Remote host this client will connect to"));
+                EditorGUILayout.PropertyField(serializedObject.FindProperty("ConnectionPort"), new GUIContent("Port","Remote port that this client will connect to"));
+                GUILayout.ExpandWidth(true);
+
+                //EditorGUILayout.LabelField("host:", GUILayout.Width(40));
+                //c.ConnectionAddress = EditorGUILayout.TextField(GUIContent.none, c.Host.Address, GUILayout.MinWidth(40));
+                //EditorGUILayout.LabelField("port:", GUILayout.Width(40));
+                //c.ConnectionPort = EditorGUILayout.IntField(GUIContent.none, c.Host.Port, GUILayout.MinWidth(40));
+                //EditorGUILayout.EndHorizontal();
             }
             EditorGUILayout.LabelField("", GUILayout.Height(5));
             EditorGUI.indentLevel -= 1;
@@ -254,26 +282,13 @@ namespace Comms
         public void drawMessageHeaders(ReliableCommunication c) {
             // Message Headers
             EditorGUILayout.LabelField(string.Format("Message Length ({0})", c.dynamicMessageLength ? "dynamic" : "fixed"), EditorStyles.boldLabel);
-            EditorGUI.indentLevel += 1;
             EditorGUILayout.BeginHorizontal();
-            if (GUILayout.Button("Toggle for dynamic messages", c.dynamicMessageLength ? ToggleButtonStyleToggled : ToggleButtonStyleNormal))
+            EditorGUILayout.PropertyField(dynamicMessagesProperty, new GUIContent("Messages with dynamic length?"));
+            if (!dynamicMessagesProperty.boolValue)
             {
-                c.dynamicMessageLength = !c.dynamicMessageLength;
+                EditorGUILayout.PropertyField(serializedObject.FindProperty("fixedMessageLength"), new GUIContent("Fixed message size (bytes)"));
             }
-            // if (GUILayout.Button("Time Sent", c.TimeHeader ? ToggleButtonStyleToggled : ToggleButtonStyleNormal))
-            // {
-            //     c.TimeHeader = !c.TimeHeader;
-            // }
-            // if (GUILayout.Button("Calculate Bandwidth", c.MonitorBandwidth ? ToggleButtonStyleToggled : ToggleButtonStyleNormal))
-            // {
-            //     c.MonitorBandwidth = !c.MonitorBandwidth;
-            //}
             EditorGUILayout.EndHorizontal();
-            if (!c.dynamicMessageLength)
-            {
-                c.fixedMessageLength = EditorGUILayout.IntField("Fixed Message Size (bytes)", c.fixedMessageLength);
-            }
-            EditorGUI.indentLevel -= 1;
         }
     }
 }
