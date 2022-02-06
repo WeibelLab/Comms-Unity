@@ -9,7 +9,7 @@ namespace Comms
     public class ReliableCommunicationEditorUI : Editor
     {
 
-        SerializedProperty isServer, serverport;
+        SerializedProperty isServer;
         SerializedProperty matchmakingStrategyProperty;
         SerializedProperty dynamicMessagesProperty;
 
@@ -29,7 +29,6 @@ namespace Comms
         private void OnEnable()
         {
             isServer = serializedObject.FindProperty("isServer");
-            serverport = serializedObject.FindProperty("ListenPort");
             matchmakingStrategyProperty = serializedObject.FindProperty("matchmakingStrategy");
             dynamicMessagesProperty = serializedObject.FindProperty("dynamicMessageLength");
         }
@@ -41,8 +40,10 @@ namespace Comms
             if (ToggleButtonStyleNormal == null)
             {
                 ToggleButtonStyleNormal = "Button";
+                ToggleButtonStyleNormal.richText = true;
                 ToggleButtonStyleToggled = new GUIStyle(ToggleButtonStyleNormal);
-                ToggleButtonStyleToggled.normal.background = ToggleButtonStyleToggled.active.background;
+                ToggleButtonStyleToggled.normal.background = ToggleButtonStyleToggled.hover.background;
+                ToggleButtonStyleToggled.richText = true;
             }
 
 
@@ -137,41 +138,52 @@ namespace Comms
                     break;
 
                 default: // Configuration
-                         /* Connection Strategy (Manual/Web/Udp) */
-                    
+                    /* Connection Strategy (Manual/Web/Udp) */
+
+
+                    //
+                    EditorGUILayout.PropertyField(serializedObject.FindProperty("ConnectionName"), new GUIContent("Connection Name","String used on log messages"));
 
 
                     EditorGUILayout.LabelField("Socket name, type, and host/port", EditorStyles.boldLabel);
-                    EditorGUI.indentLevel += 1;
+                    
+
+                    EditorGUI.indentLevel++;
 
                     GUILayout.BeginHorizontal();
+
                     EditorGUILayout.LabelField(string.Format("Socket type", GUILayout.Width(10)));
                     GUILayout.FlexibleSpace();
 
-                    if (GUILayout.Button("Server", isServer.boolValue ? ToggleButtonStyleToggled : ToggleButtonStyleNormal))
+                    if (GUILayout.Button(c.isServer ? "<b>Server</b>" : "Server", c.isServer ? ToggleButtonStyleToggled : ToggleButtonStyleNormal))
                     {
                         isServer.boolValue = true;
                         
                     }
-                    if (GUILayout.Button("Client", !isServer.boolValue ? ToggleButtonStyleToggled : ToggleButtonStyleNormal))
+                    if (GUILayout.Button(!c.isServer ? "<b>Client</b>" : "Client", !c.isServer ? ToggleButtonStyleToggled : ToggleButtonStyleNormal))
                     {
                         isServer.boolValue = false;
                         
                     }
                     GUILayout.EndHorizontal();
 
-                    EditorGUILayout.PropertyField(serializedObject.FindProperty("ConnectionName"), new GUIContent("Connection Name"));
+                    EditorGUI.indentLevel--;
+
 
                     if (c.isServer)
                     {
                         // Get port to host on
+                        EditorGUI.indentLevel++;
 
                         EditorGUILayout.PropertyField(serializedObject.FindProperty("ConnectionPort"), new GUIContent("Server Port"));
-                    } else
+                        EditorGUI.indentLevel--;
+
+                    }
+                    else
                     {
 
-                        EditorGUILayout.LabelField("Chose a way of broadcasting client/server info with other clients", EditorStyles.boldLabel);
-                        //EditorGUI.indentLevel++;
+                        EditorGUILayout.LabelField("How does this client find the server ip:port?", EditorStyles.boldLabel);
+                        EditorGUI.indentLevel++;
                         EditorGUILayout.PropertyField(matchmakingStrategyProperty);
 
 
@@ -191,7 +203,7 @@ namespace Comms
                                 EditorGUILayout.LabelField("Unknown type" + c.matchmakingStrategy);
                                 break;
                         }
-                        //EditorGUI.indentLevel--;
+                        EditorGUI.indentLevel--;
                         EditorGUILayout.Space();
                     }
 

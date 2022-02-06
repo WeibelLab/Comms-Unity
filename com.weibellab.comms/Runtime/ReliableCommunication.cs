@@ -16,6 +16,11 @@ namespace Comms
     /// <summary>
     /// TCP Server/Client for strings/json/bytes
     /// 
+    /// v1.3.4
+    /// - new interface for matchmaking
+    /// - fixed unity editor not always saving port, client vs server
+    /// - added (mock) support for client events from the tcp server
+    /// 
     /// v1.3.3
     /// - RemoteEndpointIP()
     /// - RemoteEndpointPort()
@@ -58,10 +63,13 @@ namespace Comms
         {
         }
 
+        static public int versionMajor = 1;
+        static public int versionMed = 3;
+        static public int versionMin = 4;
+
         #region public members
         // Determining type of socket communication
         public bool isServer;
-        public int ListenPort;
         public CommunicationMessageType EventType;
         //public CommunicationHeaderType[] Headers = new CommunicationHeaderType[1] { CommunicationHeaderType.Length };
 
@@ -123,7 +131,8 @@ namespace Comms
         public bool ConnectOnEnable = true;
 
         // External Connection Information
-        public TargettingStrategy strategy = TargettingStrategy.Web;
+        [Tooltip("What approach should be used to find other devices on the network or the internet?")]
+        public TargettingStrategy matchmakingStrategy = TargettingStrategy.Manual;
         public string id = "qwerty";
         public string key = "inkoay";
         public string room = "blue-dog";
@@ -133,8 +142,11 @@ namespace Comms
         #endregion
 
         #region private members
+        
         // Host
-        public CommunicationEndpoint Host = new CommunicationEndpoint("192.168.1.1", 12345, "");
+        public string ConnectionName = "";
+        public string ConnectionAddress = "192.168.1.1";
+        public int ConnectionPort = 12345;
 
         // TCP
         private TcpListener selfServer;
@@ -173,10 +185,10 @@ namespace Comms
         /// </summary>
         private void Awake()
         {
-            if (Host.Name.Length == 0)
-                Host.Name = this.gameObject.name;
+            if (ConnectionName.Length == 0)
+                ConnectionName = String.Format("{0} {1} ({1}:{2})",isServer?"Server" : "Client" ,this.gameObject.name, ConnectionAddress, ConnectionPort) ;
 
-            LogName = "[" + Host.Name + (isServer ? " TCP Server] - " : " TCP Client] - ");
+            LogName = "[" + ConnectionName + (isServer ? " TCP Server] - " : " TCP Client] - ");
 
             // making sure sockets report statistics regardless of how they were instantiated
             statisticsReporter = GetComponent<CommunicationStatistics>();
@@ -184,7 +196,7 @@ namespace Comms
             {
                 //Debug.LogWarning(LogName + " Missing socket statistics companion");
                 statisticsReporter = this.gameObject.AddComponent<CommunicationStatistics>();
-                statisticsReporter.Name = Host.Name;
+                statisticsReporter.Name = ConnectionAddress;
                 statisticsReporter.TCP = true;
             }
 
@@ -360,7 +372,7 @@ namespace Comms
         }
 
         /// <summary>
-        /// Sets the target IP and Port based on set strategy
+        /// Sets the target IP and Port based on set matchmakingStrategy
         /// By default, the user manually sets the port and IP.
         /// Optionally, they can ping a web server to get other device info.
         /// </summary>
@@ -370,7 +382,7 @@ namespace Comms
             if (Application.isPlaying)
             {
                 Task<bool> task;
-                switch (this.strategy)
+                switch (this.matchmakingStrategy)
                 {
                     case TargettingStrategy.Manual:
                         this.StartConnection();
@@ -419,7 +431,7 @@ namespace Comms
                 { "type", this.isServer? "server":"client" },
                 { "key", this.key },
                 { "room", this.room },
-                { "port", this.isServer? this.ListenPort.ToString(): "" }
+                { "port", this.isServer? this.ConnectionPort.ToString(): "" }
             };
 
             // Make POST request
@@ -442,11 +454,11 @@ namespace Comms
                     Regex rg = new Regex(@"[0-9]*\.[0-9]*\.[0-9]*\.[0-9]*");
                     MatchCollection matches = rg.Matches(ip);
                     if (matches.Count > 0) { ip = matches[0].Value; }
-                    this.Host.Address = ip;
+                    this.ConnectionAddress = ip;
                     Debug.Log(LogName + "Set IP Address to " + ip);
 
                     // Parse Port
-                    this.Host.Port = (int)responseJson["port"].i;
+                    this.ConnectionPort = (int)responseJson["port"].i;
                 }
                 return true;
             }
@@ -679,9 +691,9 @@ namespace Comms
                         Thread.Sleep(ReconnectTimeoutMs);
                     firstTime = false;
 
-                    Debug.Log(LogName + "Connecting to " + Host.Address + ":" + Host.Port);
-                    tcpClient = new TcpClient(Host.Address, Host.Port);
-                    Debug.Log(String.Format("{0} Connected to {1}:{2}", LogName, Host.Address, Host.Port));
+                    Debug.Log(LogName + "Connecting to " + ConnectionAddress + ":" + ConnectionPort);
+                    tcpClient = new TcpClient(ConnectionAddress, ConnectionPort);
+                    Debug.Log(String.Format("{0} Connected to {1}:{2}", LogName, ConnectionAddress, ConnectionPort));
                     statisticsReporter.RecordConnectionEstablished();
                     socketConnected = true;
                     onConnectRaised = true;
@@ -781,9 +793,9 @@ namespace Comms
                     firstTime = false;
 
 
-                    selfServer = new TcpListener(IPAddress.Parse("0.0.0.0"), ListenPort);
+                    selfServer = new TcpListener(IPAddress.Parse("0.0.0.0"), ConnectionPort);
                     selfServer.Start();
-                    Debug.Log(string.Format("{0} Listening at 0.0.0.0:{1}", LogName, ListenPort));
+                    Debug.Log(string.Format("{0} Listening at 0.0.0.0:{1}", LogName, ConnectionPort));
                     serverListening = true;
 
                     // Get a stream object for reading
