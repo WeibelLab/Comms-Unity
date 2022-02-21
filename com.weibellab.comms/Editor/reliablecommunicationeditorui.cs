@@ -16,11 +16,9 @@ namespace Comms
         private static GUIStyle ToggleButtonStyleNormal = null;
         private static GUIStyle ToggleButtonStyleToggled = null;
         
-        
-
+       
         private static string[] eventHandlerToolbar = new string[] { "Configuration", "Data Events", "Status Events" };
         private int openTab = 0;
-        private int strategyComboBox = 0;
 
         private static string[] ipStrategyToolbar = new string[] {"Manual (default)", "Web", "UDP (unsupported)"};
 
