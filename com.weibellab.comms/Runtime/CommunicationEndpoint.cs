@@ -1,4 +1,5 @@
-﻿using System.Collections;
+﻿using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Net;
 using UnityEngine;
@@ -13,6 +14,20 @@ namespace Comms
     public class CommunicationStringEvent : UnityEvent<string> { }
     [System.Serializable]
     public class CommunicationByteEvent : UnityEvent<byte[]> { }
+
+
+
+    [System.Serializable]
+    public class SocketConnectedEvent : UnityEvent<Client> { }
+
+    [System.Serializable]
+    public class SocketDisconnectedEvent : UnityEvent<Client> { }
+
+    /// <summary>
+    /// Called when ReliableCommunicationSocket raises an error (int -> socket error; string -> message converted to text)
+    /// </summary>
+    [System.Serializable]
+    public class SocketErrorEvent : UnityEvent<Client, int, string> { }
 
 
     [System.Serializable]
@@ -43,6 +58,13 @@ namespace Comms
             this.ipendpoint = new IPEndPoint(IPAddress.Parse(this.Address), this.Port);
         }
 
+        public CommunicationEndpoint(IPEndPoint endpoint, string Name="device") {
+            this.Name = Name;
+            this.ipendpoint = endpoint;
+            this.Address = endpoint.Address.ToString();
+            this.Port = endpoint.Port;
+        }
+
         public void SetAddress(string address)
         {
             this.Address = address;
@@ -65,7 +87,22 @@ namespace Comms
 
         public IPEndPoint AsIPEndPoint()
         {
+            if (this.ipendpoint == null)
+            {
+                this.ipendpoint = new IPEndPoint(IPAddress.Parse(this.Address), this.Port);
+            }
+
             return this.ipendpoint;
+        }
+
+        public bool Equals(CommunicationEndpoint other)
+        {
+            return other.Address.Equals(this.Address) && other.Port == this.Port;
+        }
+
+        public bool Equals(IPEndPoint other)
+        {
+            return other.Address.ToString().Equals(this.Address) && other.Port == this.Port;
         }
     }
 }
