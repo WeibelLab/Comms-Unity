@@ -14,7 +14,7 @@ namespace Comms
         public List<Client> Clients;
 
         // Private
-        private Thread ServerThread;
+        protected Thread ServerThread;
         protected bool stopThread;
         public int AbortTimeout = 100;
 
@@ -23,7 +23,7 @@ namespace Comms
         {
             for (int i=0; i<this.Clients.Count; i++)
             {
-                this.Clients[i].Send(data);
+                this.SendTo(Clients[i], data);
             }
         }
         virtual public void SendAll(string data)

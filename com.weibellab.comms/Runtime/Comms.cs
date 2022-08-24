@@ -33,8 +33,8 @@ namespace Comms
         public SocketErrorEvent OnClientError;
 
         // Queue
-        private Queue<byte[]> MessageQueue;
-        private System.Object MessageQueueLock;
+        protected Queue<byte[]> MessageQueue;
+        protected System.Object MessageQueueLock;
         /// <summary>
         /// Allows scripts to queue method calls until Update
         /// </summary>
@@ -44,6 +44,15 @@ namespace Comms
         /// A threaded function to parse received data.
         /// </summary>
         public System.Action<object> MessageParser;
+
+        /// <summary>
+        /// The default threaded handling of a message.
+        /// This may be simply adding messages to the runtime queue
+        /// Or accumulating a certain number of bytes before enqueuing
+        /// Or replaced by a custom parser that may convert bytes to an image or other behavior.
+        /// </summary>
+        /// <param name="data"></param>
+        abstract protected void DefaultMessageParser(object o);
 
         protected void ReadFromQueue()
         {
@@ -82,7 +91,15 @@ namespace Comms
             }
         }
 
-        private void ParseData(byte[] data)
+        protected void RunOnUnityThread(System.Action func)
+        {
+            lock (UnityThreadQueueLock)
+            {
+                UnityThreadQueue.Enqueue(func);
+            }
+        }
+
+        protected void ParseData(byte[] data)
         {
             // TODO: put in try catch if UnityEvents propogate errors
             switch (config.MessageType)
@@ -97,25 +114,6 @@ namespace Comms
                 case CommunicationMessageType.Json:
                     OnJsonMessageReceived.Invoke(new JSONObject(Encoding.UTF8.GetString(data)));
                     break;
-            }
-        }
-
-        /// <summary>
-        /// Default message parser.
-        /// Takes a byte[] and adds it to the queue of messages
-        /// that are handled in the Unity Main Thread's Update loop.
-        /// </summary>
-        /// <param name="data"></param>
-        public void EnqueueMessage(object data)
-        {
-            // Check if byte[]
-            if (!(data.GetType().IsArray && typeof(byte).IsAssignableFrom(data.GetType().GetElementType())))
-                return;
-            // Enqueue
-            byte[] msg = data as byte[];
-            lock (MessageQueueLock)
-            {
-                MessageQueue.Enqueue(msg);
             }
         }
 
@@ -143,6 +141,7 @@ namespace Comms
             MessageQueue = new Queue<byte[]>();
             UnityThreadQueue = new Queue<System.Action>();
             UnityThreadQueueLock = new object();
+            if (this.MessageParser == null) this.MessageParser = this.DefaultMessageParser;
 
             // Set Log Name
             this.LName = $"[Comms:{config.Endpoint.Name}]";

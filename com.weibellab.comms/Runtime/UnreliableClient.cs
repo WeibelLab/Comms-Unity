@@ -50,13 +50,28 @@ namespace Comms
             impl.SendAsync(data, data.Length, this.config.Endpoint.AsIPEndPoint());
         }
 
+        /// <summary>
+        /// Adds a message to the runtime queue
+        /// </summary>
+        /// <param name="o"></param>
+        override protected void DefaultMessageParser(object o)
+        {
+            // Check if byte[]
+            if (!(o.GetType().IsArray && typeof(byte).IsAssignableFrom(o.GetType().GetElementType())))
+                return;
+            // Enqueue
+            byte[] data = o as byte[];
+            lock (MessageQueueLock)
+            {
+                MessageQueue.Enqueue(data);
+            }
+        }
 
         #region Unity Runtime
         new protected void Awake()
         {
             base.Awake();
             if (impl == null) impl = new UdpClient();
-            if (this.MessageParser == null) this.MessageParser = this.EnqueueMessage;
         }
 
         /// <summary>

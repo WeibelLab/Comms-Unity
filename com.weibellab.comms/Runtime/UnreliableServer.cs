@@ -14,18 +14,42 @@ namespace Comms
         private Dictionary<UnreliableClient, System.DateTime> ClientTimeouts;
         private UdpClient impl;
 
+        override public void SendTo(Client client, byte[] data)
+        {
+            LogWarning("Unreliable Server currently cannot send messages");
+            return;
+        }
+
         protected override void CloseSocket()
         {
             this.impl.Close();
+            for (int i=Clients.Count-1; i>=0; i--)
+            {
+                RunOnUnityThread(() =>
+                {
+                    OnClientDisconnected.Invoke(Clients[i]);
+                });
+                Destroy(Clients[i]);
+            }
         }
 
         protected override void DisposeSocket()
         {
             this.impl = null;
+            this.Clients = new List<Client>();
         }
 
         protected override void SetupSocket()
         {
+            // Check if already running
+            if (ServerThread != null && ServerThread.IsAlive)
+            {
+                LogWarning("Already running. Disable and Re-enabled component to reset");
+                return;
+            }
+
+            // Start server
+            stopThread = false;
             try
             {
                 this.impl = new UdpClient(config.Endpoint.AsIPEndPoint());
@@ -35,6 +59,23 @@ namespace Comms
                 LogError($"Failed to initialize socket\n{err}");
                 this.StopThread();
                 this.impl = null;
+            }
+        }
+
+        /// <summary>
+        /// Adds a message to the runtime queue
+        /// </summary>
+        /// <param name="o"></param>
+        override protected void DefaultMessageParser(object o)
+        {
+            // Check if byte[]
+            if (!(o.GetType().IsArray && typeof(byte).IsAssignableFrom(o.GetType().GetElementType())))
+                return;
+            // Enqueue
+            byte[] data = o as byte[];
+            lock (MessageQueueLock)
+            {
+                MessageQueue.Enqueue(data);
             }
         }
 
@@ -151,7 +192,6 @@ namespace Comms
         {
             base.Awake();
             ClientTimeouts = new Dictionary<UnreliableClient, System.DateTime>();
-            if (this.MessageParser == null) this.MessageParser = this.EnqueueMessage;
         }
 
         new private void Update()
