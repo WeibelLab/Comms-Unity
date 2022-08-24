@@ -49,6 +49,8 @@ namespace Comms
                     ipEndpoint = config.Endpoint.AsIPEndPoint();
                     // Read from socket
                     byte[] msg = impl.Receive(ref ipEndpoint);
+                    MessageParser(msg);
+                    continue;
 
                     // TODO: implement header read
                     // TODO: stats.RecordPacketReceived(msg.Length);
@@ -149,7 +151,7 @@ namespace Comms
         {
             base.Awake();
             ClientTimeouts = new Dictionary<UnreliableClient, System.DateTime>();
-            this.MessageParser = this.EnqueueMessage;
+            if (this.MessageParser == null) this.MessageParser = this.EnqueueMessage;
         }
 
         new private void Update()
