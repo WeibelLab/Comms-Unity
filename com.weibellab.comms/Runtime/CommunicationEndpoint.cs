@@ -16,6 +16,13 @@ namespace Comms
     public class CommunicationByteEvent : UnityEvent<byte[]> { }
 
 
+    /// <summary>
+    /// We raise this exception when the socket disconnects mid-read
+    /// </summary>
+    public class SocketDisconnected : Exception
+    {
+    }
+
 
     [System.Serializable]
     public class SocketConnectedEvent : UnityEvent<Client> { }

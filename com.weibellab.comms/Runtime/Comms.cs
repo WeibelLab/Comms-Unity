@@ -40,6 +40,10 @@ namespace Comms
         /// </summary>
         protected Queue<System.Action> UnityThreadQueue;
         protected System.Object UnityThreadQueueLock;
+        /// <summary>
+        /// A threaded function to parse received data.
+        /// </summary>
+        public System.Action<object> MessageParser;
 
         protected void ReadFromQueue()
         {
@@ -96,11 +100,22 @@ namespace Comms
             }
         }
 
-        public void EnqueueMessage(byte[] data)
+        /// <summary>
+        /// Default message parser.
+        /// Takes a byte[] and adds it to the queue of messages
+        /// that are handled in the Unity Main Thread's Update loop.
+        /// </summary>
+        /// <param name="data"></param>
+        public void EnqueueMessage(object data)
         {
+            // Check if byte[]
+            if (!(data.GetType().IsArray && typeof(byte).IsAssignableFrom(data.GetType().GetElementType())))
+                return;
+            // Enqueue
+            byte[] msg = data as byte[];
             lock (MessageQueueLock)
             {
-                MessageQueue.Enqueue(data);
+                MessageQueue.Enqueue(msg);
             }
         }
 

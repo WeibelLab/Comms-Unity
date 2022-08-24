@@ -56,6 +56,7 @@ namespace Comms
         {
             base.Awake();
             if (impl == null) impl = new UdpClient();
+            this.MessageParser = this.EnqueueMessage;
         }
 
         /// <summary>

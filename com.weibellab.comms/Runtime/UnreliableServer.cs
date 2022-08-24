@@ -49,6 +49,8 @@ namespace Comms
                     ipEndpoint = config.Endpoint.AsIPEndPoint();
                     // Read from socket
                     byte[] msg = impl.Receive(ref ipEndpoint);
+
+                    // TODO: implement header read
                     // TODO: stats.RecordPacketReceived(msg.Length);
 
                     // Create a client from the sender so a response can be sent
@@ -62,7 +64,7 @@ namespace Comms
                             {
                                 Log("Client already existed");
                                 client = Clients[i] as UnreliableClient;
-                                client.EnqueueMessage(msg);
+                                client.MessageParser(msg);
                                 break;
                             }
                         }
@@ -80,16 +82,13 @@ namespace Comms
                             client.OnStringMessageReceived.AddListener(this.OnStringMessageReceived.Invoke);
                             client.OnJsonMessageReceived.AddListener(this.OnJsonMessageReceived.Invoke);
 
-                            client.EnqueueMessage(msg);
+                            client.MessageParser(msg);
                         }
                     }
                     else
                     {
-                        EnqueueMessage(msg);
+                        MessageParser(msg);
                     }
-
-                    // TODO: implement header read
-
                 }
                 catch (System.Threading.ThreadAbortException)
                 { }
@@ -150,6 +149,7 @@ namespace Comms
         {
             base.Awake();
             ClientTimeouts = new Dictionary<UnreliableClient, System.DateTime>();
+            this.MessageParser = this.EnqueueMessage;
         }
 
         new private void Update()
