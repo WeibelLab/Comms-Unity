@@ -14,6 +14,12 @@ namespace Comms
         private Dictionary<UnreliableClient, System.DateTime> ClientTimeouts;
         private UdpClient impl;
 
+        public UnreliableServer(Config config): base(config)
+        {
+            Log("Initializing Unreliable Server");
+            ClientTimeouts = new Dictionary<UnreliableClient, System.DateTime>();
+        }
+
         override public void SendTo(Client client, byte[] data)
         {
             LogWarning("Unreliable Server currently cannot send messages");
@@ -22,14 +28,14 @@ namespace Comms
 
         protected override void CloseSocket()
         {
-            this.impl.Close();
+            if (this.impl != null) this.impl.Close();
             for (int i=Clients.Count-1; i>=0; i--)
             {
                 RunOnUnityThread(() =>
                 {
                     OnClientDisconnected.Invoke(Clients[i]);
                 });
-                Destroy(Clients[i]);
+                // TODO: Destroy(Clients[i]);
             }
         }
 
@@ -39,13 +45,13 @@ namespace Comms
             this.Clients = new List<Client>();
         }
 
-        protected override void SetupSocket()
+        protected override bool SetupSocket()
         {
             // Check if already running
-            if (ServerThread != null && ServerThread.IsAlive)
+            if (thread != null && thread.IsAlive)
             {
                 LogWarning("Already running. Disable and Re-enabled component to reset");
-                return;
+                return false;
             }
 
             // Start server
@@ -53,12 +59,14 @@ namespace Comms
             try
             {
                 this.impl = new UdpClient(config.Endpoint.AsIPEndPoint());
+                return true;
             }
             catch (System.Exception err)
             {
                 LogError($"Failed to initialize socket\n{err}");
                 this.StopThread();
                 this.impl = null;
+                return false;
             }
         }
 
@@ -79,7 +87,7 @@ namespace Comms
             }
         }
 
-        protected override void ServerThreadLoop()
+        protected override void threadLoop()
         {
             IPEndPoint ipEndpoint = config.Endpoint.AsIPEndPoint();
             // TODO: statistics.RecordConnectionEstablished()
@@ -90,6 +98,7 @@ namespace Comms
                     ipEndpoint = config.Endpoint.AsIPEndPoint();
                     // Read from socket
                     byte[] msg = impl.Receive(ref ipEndpoint);
+                    Log($"Received {msg.Length} bytes");
                     MessageParser(msg);
                     continue;
 
@@ -171,13 +180,13 @@ namespace Comms
                 if (!ClientTimeouts.ContainsKey(client))
                 {
                     Clients.RemoveAt(i);
-                    Destroy(client);
+                    // TODO: Destroy(client);
                 }
                 else if ((System.DateTime.Now - ClientTimeouts[client]).TotalSeconds > KeepClientsForSeconds)
                 {
                     ClientTimeouts.Remove(client);
                     Clients.RemoveAt(i);
-                    Destroy(client);
+                    // TODO: Destroy(client);
                 }
                 else
                 {
@@ -188,21 +197,18 @@ namespace Comms
 
 
         #region Unity Runtime
-        new private void Awake()
-        {
-            base.Awake();
-            ClientTimeouts = new Dictionary<UnreliableClient, System.DateTime>();
-        }
 
-        new private void Update()
+        override public void Update()
         {
+            if (this.impl == null) return;
+
             base.Update();
             ReadFromQueue();
             CheckForTimedOutClients();
 
             for (int i = 0; i < Clients.Count; i++)
             {
-                (Clients[i] as UnreliableClient).ForceUpdate();
+                (Clients[i] as UnreliableClient).Update();
             }
         }
         #endregion

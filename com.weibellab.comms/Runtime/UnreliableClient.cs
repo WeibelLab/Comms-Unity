@@ -9,26 +9,31 @@ namespace Comms
     {
         private UdpClient impl = new UdpClient();
 
-        public UnreliableClient(string address, int port, Config config, string name ="UnreliableClient"): base()
+        public UnreliableClient(Config config): base(config)
         {
-            this.config = config;
+            if (impl == null) impl = new UdpClient();
+        }
+
+        public UnreliableClient(string address, int port, Config config, string name ="UnreliableClient"): base(config)
+        {
             this.config.Endpoint = new CommunicationEndpoint(address, port, name);
             // Setup Events
             OnByteMessageReceived = new CommunicationByteEvent();
             OnStringMessageReceived = new CommunicationStringEvent();
             OnJsonMessageReceived = new CommunicationJsonEvent();
-            this.Awake();
+
+            if (impl == null) impl = new UdpClient();
         }
 
-        public UnreliableClient(System.Net.IPEndPoint endpoint, Config config, string name = "UnreliableClient"): base()
+        public UnreliableClient(System.Net.IPEndPoint endpoint, Config config, string name = "UnreliableClient"): base(config)
         {
-            this.config = config;
             this.config.Endpoint = new CommunicationEndpoint(endpoint, name);
             // Setup Events
             OnByteMessageReceived = new CommunicationByteEvent();
             OnStringMessageReceived = new CommunicationStringEvent();
             OnJsonMessageReceived = new CommunicationJsonEvent();
-            this.Awake();
+
+            if (impl == null) impl = new UdpClient();
         }
 
         public void Configure(string address, int port, Config config, string name = "UnreliableClient")
@@ -68,26 +73,6 @@ namespace Comms
         }
 
         #region Unity Runtime
-        new protected void Awake()
-        {
-            base.Awake();
-            if (impl == null) impl = new UdpClient();
-        }
-
-        /// <summary>
-        /// Allows for a server to forcibly call the update loop
-        /// This is done because the server instantiates clients directly
-        /// and not through Unity.
-        /// </summary>
-        public void ForceUpdate()
-        {
-            this.Update();
-        }
-
-        new protected void Update()
-        {
-            base.Update();
-        }
         #endregion
     }
 }

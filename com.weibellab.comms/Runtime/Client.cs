@@ -7,6 +7,11 @@ namespace Comms
 {
     public abstract class Client : Comms
     {
+        public Client(Config config) : base(config)
+        {
+
+        }
+
         // Sending data
         abstract public void Send(byte[] data);
         public void Send(string data)
@@ -22,7 +27,7 @@ namespace Comms
 
 
         #region Unity Runtime
-        new protected void Update()
+        new public void Update()
         {
             base.Update();
             ReadFromQueue();

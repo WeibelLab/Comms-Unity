@@ -1,6 +1,8 @@
 using System.Collections;
 using System.Collections.Generic;
+using System.Net.Sockets;
 using System.Text;
+using System.Threading;
 using UnityEngine;
 
 namespace Comms
@@ -10,7 +12,8 @@ namespace Comms
     /// Provides configuration, logging, events, and queuing
     /// functionality.
     /// </summary>
-    public abstract class Comms : MonoBehaviour
+    [System.Serializable]
+    public abstract class Comms
     {
         /// <summary>
         /// "Log Name" the prefix used for all logs from this object
@@ -22,6 +25,7 @@ namespace Comms
         /// if false, only prints errors
         /// </summary>
         public bool Quiet;
+        [SerializeField]
         public Config config;
 
         // Public Events
@@ -32,6 +36,15 @@ namespace Comms
         public SocketDisconnectedEvent OnClientDisconnected;
         public SocketErrorEvent OnClientError;
 
+        // Threads
+        protected Thread thread;
+        protected bool stopThread;
+        public int ThreadAbortTimeout = 100;
+        /// <summary>
+        /// A threaded function to parse received data.
+        /// </summary>
+        public System.Action<object> MessageParser;
+
         // Queue
         protected Queue<byte[]> MessageQueue;
         protected System.Object MessageQueueLock;
@@ -40,10 +53,6 @@ namespace Comms
         /// </summary>
         protected Queue<System.Action> UnityThreadQueue;
         protected System.Object UnityThreadQueueLock;
-        /// <summary>
-        /// A threaded function to parse received data.
-        /// </summary>
-        public System.Action<object> MessageParser;
 
         /// <summary>
         /// The default threaded handling of a message.
@@ -54,12 +63,64 @@ namespace Comms
         /// <param name="data"></param>
         abstract protected void DefaultMessageParser(object o);
 
+        public Comms(Config config)
+        {
+            this.config = config;
+
+            // Create empty event objects
+            OnByteMessageReceived = new CommunicationByteEvent();
+            OnStringMessageReceived = new CommunicationStringEvent();
+            OnJsonMessageReceived = new CommunicationJsonEvent();
+            OnClientConnected = new SocketConnectedEvent();
+            OnClientDisconnected = new SocketDisconnectedEvent();
+            OnClientError = new SocketErrorEvent();
+
+            // Instantiate Queue elements
+            MessageQueueLock = new object();
+            MessageQueue = new Queue<byte[]>();
+            UnityThreadQueue = new Queue<System.Action>();
+            UnityThreadQueueLock = new object();
+            MessageParser = this.DefaultMessageParser;
+
+            // Set Log Name
+            this.LName = $"[Comms:{config.Endpoint.Name}]";
+        }
+
+        ~Comms()
+        {
+            this.StopThread();
+            Log("Destroyed");
+        }
+
+        virtual public void StopThread()
+        {
+            if (this.thread != null)
+            {
+                // Asks thread to stop
+                this.stopThread = true;
+
+                // Aborts thread if still running
+                if (this.thread.IsAlive)
+                {
+                    this.thread.Join(ThreadAbortTimeout);
+                    if (this.thread.IsAlive)
+                        this.thread.Abort();
+                }
+
+                // TODO: report statistics
+                //stats.RecordStreamDisconnect();
+
+                // Dispose
+                this.thread = null;
+            }
+        }
+
         protected void ReadFromQueue()
         {
             lock (MessageQueueLock)
             {
                 if (MessageQueue.Count == 0) return;
-
+                Log($"Reading {MessageQueue.Count} messages");
                 // Parse each message in queue
                 if (!config.DropAccumulatedMessages && config.MaxMessagesPerFrame == -1)
                 {
@@ -134,30 +195,88 @@ namespace Comms
         }
 
         #region Unity Runtime
-        protected void Awake()
-        {
-            // Instantiate Queue elements
-            MessageQueueLock = new object();
-            MessageQueue = new Queue<byte[]>();
-            UnityThreadQueue = new Queue<System.Action>();
-            UnityThreadQueueLock = new object();
-            if (this.MessageParser == null) this.MessageParser = this.DefaultMessageParser;
 
-            // Set Log Name
-            this.LName = $"[Comms:{config.Endpoint.Name}]";
+        // No Awake method on purpose.
+        // CommsComponent will instantiate in the OnEnable method
+        // (after Awake)
+
+        virtual public void OnEnable()
+        {
+
         }
 
-        protected void Update()
+        virtual public void Reset()
+        {
+
+        }
+
+        virtual public void Start()
+        {
+
+        }
+
+        virtual public void FixedUpdate()
+        {
+
+        }
+
+        virtual public void Update()
         {
             lock (UnityThreadQueueLock)
             {
-                while(UnityThreadQueue.Count > 0)
+                while (UnityThreadQueue.Count > 0)
                 {
                     UnityThreadQueue.Dequeue().Invoke();
                 }
             }
         }
+
+        virtual public void LateUpdate()
+        {
+
+        }
+
+        virtual public void OnApplicationQuit()
+        {
+
+        }
+
+        virtual public void OnDisable()
+        {
+
+        }
+
+        virtual public void OnDestroy()
+        {
+
+        }
         #endregion
+
+        /// <summary>
+        /// Reads readLength bytes from a network stream and saves it to buffer
+        /// </summary>
+        /// <param name="buffer"></param>
+        /// <param name="readLength"></param>
+        public static void readToBuffer(NetworkStream stream, byte[] buffer, int readLength)
+        {
+            int offset = 0;
+            // keeps reading until a full message is received
+            while (offset < buffer.Length)
+            {
+                int bytesRead = stream.Read(buffer, offset, readLength - offset); // read from stream
+                // TODO: stats.RecordPacketReceived(bytesRead);
+
+                // "  If the remote host shuts down the connection, and all available data has been received,
+                // the Read method completes immediately and return zero bytes. "
+                // https://docs.microsoft.com/en-us/dotnet/api/system.net.sockets.networkstream.read?view=netframework-4.0
+                if (bytesRead == 0)
+                {
+                    throw new SocketDisconnected();// returning here means that we are done
+                }
+
+                offset += bytesRead; // updates offset
+            }
+        }
     }
 
     [System.Serializable]
@@ -183,5 +302,21 @@ namespace Comms
         public int MaxMessagesPerFrame;
 
         //public Header header; // TODO: implement header
+
+
+
+        public static Config Default
+        {
+            get
+            {
+                return new Config()
+                {
+                    Endpoint = new CommunicationEndpoint("0.0.0.0", 3000),
+                    MessageType = CommunicationMessageType.Byte,
+                    DropAccumulatedMessages = false,
+                    MaxMessagesPerFrame = -1
+                };
+            }
+        }
     }
 }

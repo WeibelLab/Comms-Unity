@@ -21,9 +21,23 @@ namespace Comms
 
         private TcpListener impl;
 
-        public bool isConnected { get { return Clients.Count > 0; } }
+        public bool isConnected { get
+            {
+                for (int i=0; i<Clients.Count; i++)
+                {
+                    if ((Clients[i] as ReliableClient).isConnected)
+                    {
+                        return true;
+                    }
+                }
+                return false;
+            }
+        }
 
-
+        public ReliableServer(Config config): base(config)
+        {
+            Log("Initializing Reliable Server");
+        }
 
         public void CloseClients()
         {
@@ -33,7 +47,7 @@ namespace Comms
                 RunOnUnityThread(() => {
                     OnClientDisconnected.Invoke(Clients[i]);
                 });
-                Destroy(Clients[i]);
+                // TODO: Destroy(Clients[i]);
             }
         }
 
@@ -46,7 +60,7 @@ namespace Comms
                 RunOnUnityThread(() => {
                     OnClientDisconnected.Invoke(Clients[i]);
                 });
-                Destroy(Clients[i]);
+                // TODO: Destroy(Clients[i]);
             }
         }
 
@@ -56,13 +70,13 @@ namespace Comms
             this.Clients = new List<Client>();
         }
 
-        protected override void SetupSocket()
+        protected override bool SetupSocket()
         {
             // Check if already running
-            if (ServerThread != null && ServerThread.IsAlive)
+            if (thread != null && thread.IsAlive)
             {
                 LogWarning("Already running. Disable and Re-enabled component to reset");
-                return;
+                return false;
             }
 
             // Start server
@@ -70,16 +84,18 @@ namespace Comms
             try
             {
                 this.impl = new TcpListener(config.Endpoint.AsIPEndPoint());
+                return true;
             }
             catch (System.Exception err)
             {
                 LogError($"Failed to initialize socket\n{err}");
                 this.StopThread();
                 this.impl = null;
+                return false;
             }
         }
 
-        protected override void ServerThreadLoop()
+        protected override void threadLoop()
         {
             bool firstTime = true;
             bool serverListening = false;
@@ -111,12 +127,15 @@ namespace Comms
                                 Log($"Client connected {clientEndpoint.Address}:{clientEndpoint.Port}");
 
                                 // Create new client
-                                client = new ReliableClient(tcpClient, config);
+                                client = new ReliableClient(tcpClient, config, this, $"{config.Endpoint.Name}_TCP_{Clients.Count}");
                                 this.Clients.Add(client);
                                 RunOnUnityThread(() =>
                                 {
                                     OnClientConnected.Invoke(client);
                                 });
+
+                                // Start client
+                                client.StartThread();
 
                                 // TODO: stats.RecordConnectionEstablished();
                                 //SocketMessageReadingLoop(tcpClient, true);
@@ -141,7 +160,7 @@ namespace Comms
                         {
                             if (client != null)
                             {
-                                Destroy(client);
+                                // TODO: Destroy(client);
                                 // TODO: the client should handle this
                                 // TODO: stats.RecordStreamDisconnect();
                                 Log("Client disconnected");
@@ -187,9 +206,9 @@ namespace Comms
                     if (serverListening)
                     {
                         if (stopThread)
-                            Debug.Log("Stopped");
+                            Log("Stopped");
                         else
-                            Debug.Log("Stopped - Trying again in " + (ReconnectTimeoutMs / 1000f) + " sec");
+                            Log("Stopped - Trying again in " + (ReconnectTimeoutMs / 1000f) + " sec");
                     }
                 }
             }
@@ -197,15 +216,16 @@ namespace Comms
 
 
         #region Unity Runtime
-
-        new private void Update()
+        
+        override public void Update()
         {
+            if (this.impl == null) return;
             base.Update();
             ReadFromQueue();
 
             for (int i = 0; i < Clients.Count; i++)
             {
-                //(Clients[i] as ReliableClient).ForceUpdate();
+                (Clients[i] as ReliableClient).Update();
             }
         }
 

@@ -13,10 +13,23 @@ namespace Comms
     {
         public List<Client> Clients;
 
-        // Private
-        protected Thread ServerThread;
-        protected bool stopThread;
-        public int AbortTimeout = 100;
+        public Server(Config config): base(config)
+        {
+            // Setup Thread
+            this.thread = new Thread(new ThreadStart(threadLoop));
+            this.stopThread = false;
+            this.thread.Name = $"Unity Comms {this.config.Endpoint.Name}";
+
+            Clients = new List<Client>();
+
+            // TODO: create stats reporter
+        }
+
+        ~Server()
+        {
+            this.StopThread();
+            Log($"STOPPED listening on {config.Endpoint.Address}:{config.Endpoint.Port}");
+        }
 
         // Methods callable by other scripts
         virtual public void SendAll(byte[] data)
@@ -55,59 +68,55 @@ namespace Comms
             this.SendTo(client, data.ToString());
         }
 
-        abstract protected void ServerThreadLoop();
-        abstract protected void SetupSocket();
+        abstract protected void threadLoop();
+        abstract protected bool SetupSocket();
         abstract protected void CloseSocket();
         abstract protected void DisposeSocket();
 
-        virtual public void StopThread()
+        override public void StopThread()
         {
-            if (this.ServerThread != null)
+            if (this.thread != null)
             {
                 // Asks thread to stop
                 this.stopThread = true;
                 CloseSocket();
 
                 // Aborts thread if still running
-                if (this.ServerThread.IsAlive)
+                if (this.thread.IsAlive)
                 {
-                    this.ServerThread.Join(AbortTimeout);
-                    if (this.ServerThread.IsAlive)
-                        this.ServerThread.Abort();
+                    this.thread.Join(ThreadAbortTimeout);
+                    if (this.thread.IsAlive)
+                        this.thread.Abort();
                 }
 
                 // TODO: report statistics
                 //stats.RecordStreamDisconnect();
 
                 // Dispose
-                this.ServerThread = null;
+                this.thread = null;
                 DisposeSocket();
             }
         }
 
         #region Unity Runtime
-        //protected void Awake()
-        //{
-        //    base.Awake();
-        //    // TODO: Create Statstics Reporter
-        //}
-
-        private void OnEnable()
+        override public void OnEnable()
         {
-            // Setup Thread
-            this.ServerThread = new Thread(new ThreadStart(ServerThreadLoop));
-            this.stopThread = false;
+            base.OnEnable();
 
-            this.SetupSocket();
-
-            this.ServerThread.Start();
-            Log($"STARTED listening on {config.Endpoint.Address}:{config.Endpoint.Port}");
+            if (this.SetupSocket())
+            {
+                this.thread.Start();
+                Log($"STARTED listening on {config.Endpoint.Address}:{config.Endpoint.Port}");
+            } else
+            {
+                LogError("Couldn't start server");
+            }
         }
 
-        private void OnDisable()
+        override public void Update()
         {
-            this.StopThread();
-            Log($"STOPPED listening on {config.Endpoint.Address}:{config.Endpoint.Port}");
+            base.Update();
+            ReadFromQueue();
         }
         #endregion
     }
